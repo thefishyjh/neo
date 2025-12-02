@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reflex Core</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        #game-area {
+            /* Inherits HUD style from global css, but specific dimensions here */
+            width: 800px;
+            height: 600px;
+            position: relative;
+            cursor: none; /* Use custom cursor */
+            overflow: hidden;
+            background: 
+                linear-gradient(rgba(255, 0, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 0, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Hexagonal Target */
+        .target {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 0, 255, 0.1);
+            border: 2px solid #ff00ff;
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            cursor: pointer;
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            transition: transform 0.1s;
+            box-shadow: 0 0 15px #ff00ff;
+        }
+
+        /* Crosshair inside target */
+        .target::after {
+            content: "+";
+            color: #ff00ff;
+            font-size: 30px;
+            font-family: monospace;
+            pointer-events: none;
+        }
+
+        .target:active {
+            transform: scale(0.9);
+            background: #ff00ff;
+        }
+        .target:active::after { color: #fff; }
+
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 20;
+            backdrop-filter: blur(5px);
+        }
+        
+        .overlay-btn {
+            background: transparent;
+            border: 2px solid var(--neon-magenta);
+            color: var(--neon-magenta);
+            padding: 15px 40px;
+            font-family: 'Courier New', monospace;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255,0,255,0.3);
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .overlay-btn:hover {
+            background: var(--neon-magenta);
+            color: #fff;
+            box-shadow: 0 0 30px var(--neon-magenta);
+        }
+    </style>
+</head>
+<body>
+    <a href="../../index.html" class="cyber-btn">&lt; SYSTEM_EXIT</a>
+    
+    <div class="game-wrapper">
+        <div class="cyber-hud">
+            <div class="hud-title">REFLEX_CORE</div>
+            <div class="hud-data">
+                SCORE: <span id="score" style="color: #ff00ff">0</span> | 
+                TIME: <span id="time">30</span>s
+            </div>
+        </div>
+
+        <div id="game-area">
+            <div id="start-overlay">
+                <button class="overlay-btn" onclick="startGame()">INITIATE SEQUENCE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const scoreEl = document.getElementById('score');
+        const timeEl = document.getElementById('time');
+        const overlay = document.getElementById('start-overlay');
+        
+        let score = 0;
+        let timeLeft = 30;
+        let gameInterval;
+        let spawnInterval;
+        let isPlaying = false;
+
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            scoreEl.innerText = score;
+            timeEl.innerText = timeLeft;
+            overlay.style.display = 'none';
+            isPlaying = true;
+
+            const existing = document.querySelectorAll('.target');
+            existing.forEach(e => e.remove());
+
+            gameInterval = setInterval(() => {
+                timeLeft--;
+                timeEl.innerText = timeLeft;
+                if(timeLeft <= 0) endGame();
+            }, 1000);
+
+            spawnTarget();
+            spawnInterval = setInterval(spawnTarget, 550);
+        }
+
+        function spawnTarget() {
+            if(!isPlaying) return;
+
+            const target = document.createElement('div');
+            target.classList.add('target');
+            
+            // Random Position
+            const size = 60;
+            const maxW = gameArea.clientWidth - size;
+            const maxH = gameArea.clientHeight - size;
+            const x = Math.random() * maxW;
+            const y = Math.random() * maxH;
+            
+            target.style.left = x + 'px';
+            target.style.top = y + 'px';
+
+            // Random Hue Variation (Magenta to Purple)
+            const hue = Math.floor(Math.random() * 40) + 280; 
+            target.style.borderColor = `hsl(${hue}, 100%, 50%)`;
+            target.style.boxShadow = `0 0 15px hsl(${hue}, 100%, 50%)`;
+
+            // Hit Logic
+            target.onmousedown = () => {
+                if(!isPlaying) return;
+                score += 100;
+                scoreEl.innerText = score;
+                target.remove();
+                createBurst(x, y);
+            };
+
+            // Miss Logic
+            setTimeout(() => {
+                if(target.parentNode) target.remove();
+            }, 1400);
+
+            gameArea.appendChild(target);
+        }
+
+        function createBurst(x, y) {
+            // Simple visual burst could go here, 
+            // but the cursor trail handles most of the feedback nicely.
+        }
+
+        function endGame() {
+            isPlaying = false;
+            clearInterval(gameInterval);
+            clearInterval(spawnInterval);
+            
+            saveGameResult("Reflex Core", score, () => {
+                overlay.innerHTML = `
+                    <h2 style="color: #fff; font-family: 'Courier New'; margin-bottom: 20px">SEQUENCE COMPLETE</h2>
+                    <p style="color: #ff00ff; margin-bottom: 30px; font-size: 1.5rem; font-family: 'Courier New'">FINAL: ${score}</p>
+                    <button class="overlay-btn" onclick="startGame()">RETRY</button>
+                `;
+                overlay.style.display = 'flex';
+            });
+        }
+
+        function saveGameResult(gameName, score, callback) {
+            if (score <= 0) {
+                if(callback) callback();
+                return;
+            }
+            
+            showCyberPrompt("SEQUENCE COMPLETE. IDENTIFY YOURSELF:", (pilot) => {
+                const newScore = {
+                    pilot: pilot.toUpperCase(),
+                    game: gameName,
+                    score: score,
+                    date: new Date().toISOString()
+                };
+                const scores = JSON.parse(localStorage.getItem('neo_arcade_hall_of_fame') || '[]');
+                scores.push(newScore);
+                localStorage.setItem('neo_arcade_hall_of_fame', JSON.stringify(scores));
+                
+                if(callback) callback();
+            });
+        }
+    </script>
+    <script src="../../assets/js/main.js"></script>
+</body>
+</html>

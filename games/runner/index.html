@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Runner</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <a href="../../index.html" class="cyber-btn">&lt; SYSTEM_EXIT</a>
+
+    <div class="game-wrapper">
+        <div class="cyber-hud">
+            <div class="hud-title">GRAVITY_RUNNER</div>
+            <div class="hud-data">DISTANCE: <span id="score">0</span>m</div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+
+        // Constants
+        const GRAVITY_SPEED = 15;
+        const RUN_SPEED_START = 6;
+        
+        // Game State
+        let score = 0;
+        let isGameOver = false;
+        let isRunning = false;
+        let gameSpeed = RUN_SPEED_START;
+        let frameCount = 0;
+
+        // Player
+        const player = {
+            x: 100,
+            y: 200, // Will be calculated
+            width: 30,
+            height: 30,
+            color: '#00f3ff',
+            onCeiling: false,
+            yVelocity: 0,
+            trail: []
+        };
+
+        // Floor/Ceiling config
+        const CEILING_Y = 50;
+        const FLOOR_Y = 350;
+
+        // Obstacles
+        let obstacles = [];
+
+        // Stars/Grid effect
+        let bgOffset = 0;
+
+        // --- Input ---
+        function handleInput() {
+            if(!isRunning) {
+                if(!isGameOver) {
+                    isRunning = true;
+                    gameLoop();
+                }
+                return;
+            }
+            // Flip Gravity
+            player.onCeiling = !player.onCeiling;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') handleInput();
+        });
+        canvas.addEventListener('mousedown', handleInput);
+
+        // --- Logic ---
+        function spawnObstacle() {
+            const type = Math.random() > 0.5 ? 'floor' : 'ceiling';
+            const height = Math.random() * 60 + 40; // 40-100px tall
+            
+            obstacles.push({
+                x: canvas.width,
+                y: type === 'floor' ? FLOOR_Y - height : CEILING_Y,
+                width: 30,
+                height: height,
+                type: type,
+                passed: false
+            });
+        }
+
+        function update() {
+            if(isGameOver) return;
+            
+            frameCount++;
+            score += Math.floor(gameSpeed / 5);
+            scoreEl.innerText = score;
+            
+            // Speed scaling
+            if(frameCount % 600 === 0) gameSpeed += 0.5;
+
+            // Player Movement (Vertical Lerp for smoothness)
+            const targetY = player.onCeiling ? CEILING_Y : FLOOR_Y - player.height;
+            player.y += (targetY - player.y) * 0.2; // Smooth transition
+
+            // Player Trail
+            if(frameCount % 3 === 0) {
+                player.trail.push({x: player.x, y: player.y, alpha: 1.0});
+                if(player.trail.length > 5) player.trail.shift();
+            }
+
+            // Spawn Obstacles
+            if(frameCount % Math.floor(1000 / gameSpeed) === 0) { // Spawn faster as speed increases
+                spawnObstacle();
+            }
+
+            // Update Obstacles
+            for(let i=obstacles.length-1; i>=0; i--) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Collision
+                // Simple AABB
+                // Reduce player hitbox slightly for forgiveness
+                const pHitbox = {
+                    x: player.x + 5, 
+                    y: player.y + 5, 
+                    w: player.width - 10, 
+                    h: player.height - 10
+                };
+
+                if (
+                    pHitbox.x < obs.x + obs.width &&
+                    pHitbox.x + pHitbox.w > obs.x &&
+                    pHitbox.y < obs.y + obs.height &&
+                    pHitbox.y + pHitbox.h > obs.y
+                ) {
+                    gameOver();
+                }
+
+                if(obs.x + obs.width < 0) obstacles.splice(i, 1);
+            }
+
+            // Update Background
+            bgOffset -= gameSpeed * 0.5;
+            if(bgOffset <= -40) bgOffset = 0;
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Bounds (Ceiling & Floor)
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, CEILING_Y);
+            ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
+            
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 2;
+            
+            // Ceiling Line
+            ctx.beginPath();
+            ctx.moveTo(0, CEILING_Y); ctx.lineTo(canvas.width, CEILING_Y);
+            ctx.stroke();
+            
+            // Floor Line
+            ctx.beginPath();
+            ctx.moveTo(0, FLOOR_Y); ctx.lineTo(canvas.width, FLOOR_Y);
+            ctx.stroke();
+
+            // Moving Grid Elements (Background depth)
+            ctx.strokeStyle = 'rgba(0, 243, 255, 0.1)';
+            for(let i=bgOffset; i<canvas.width; i+=40) {
+                ctx.beginPath();
+                ctx.moveTo(i, CEILING_Y);
+                ctx.lineTo(i - 100, FLOOR_Y); // Slanted lines for speed effect
+                ctx.stroke();
+            }
+
+            if(!isRunning) {
+                ctx.fillStyle = "#00f3ff";
+                ctx.font = "20px 'Courier New'";
+                ctx.textAlign = "center";
+                ctx.fillText("TAP / SPACE TO SWITCH GRAVITY", canvas.width/2, canvas.height/2);
+                return;
+            }
+
+            // Draw Trail
+            player.trail.forEach(t => {
+                ctx.fillStyle = `rgba(0, 243, 255, ${t.alpha * 0.5})`;
+                ctx.fillRect(t.x, t.y, player.width, player.height);
+                t.alpha -= 0.1;
+            });
+
+            // Draw Player
+            ctx.fillStyle = player.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Inner core
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x + 5, player.y + 5, player.width - 10, player.height - 10);
+            ctx.shadowBlur = 0;
+
+            // Draw Obstacles
+            ctx.fillStyle = '#ff0055'; // Danger Red
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ff0055';
+            obstacles.forEach(obs => {
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            });
+            ctx.shadowBlur = 0;
+        }
+
+        function gameLoop() {
+            if(isGameOver) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#ff0000';
+            ctx.font = 'bold 40px "Courier New"';
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ff0000';
+            ctx.fillText("SYNC FAILED", canvas.width/2, canvas.height/2);
+            
+            saveGameResult("Neon Runner", score, () => {
+                 document.location.reload();
+            });
+        }
+
+        // Init
+        // Set initial player Y
+        player.y = FLOOR_Y - player.height;
+        draw();
+
+        function saveGameResult(gameName, score, callback) {
+            if (score <= 50) { // Don't save tiny scores
+                if(callback) callback();
+                return;
+            }
+            if(window.showCyberPrompt) {
+                showCyberPrompt("DISTANCE RECORDED. PILOT ID:", (pilot) => {
+                    const newScore = {
+                        pilot: pilot.toUpperCase(),
+                        game: gameName,
+                        score: score,
+                        date: new Date().toISOString()
+                    };
+                    const scores = JSON.parse(localStorage.getItem('neo_arcade_hall_of_fame') || '[]');
+                    scores.push(newScore);
+                    localStorage.setItem('neo_arcade_hall_of_fame', JSON.stringify(scores));
+                    if(callback) callback();
+                });
+            } else {
+                if(callback) callback();
+            }
+        }
+    </script>
+    <script src="../../assets/js/main.js"></script>
+</body>
+</html>

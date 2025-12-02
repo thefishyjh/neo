@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Core Defense</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <a href="../../index.html" class="cyber-btn">&lt; SYSTEM_EXIT</a>
+
+    <div class="game-wrapper">
+        <div class="cyber-hud">
+            <div class="hud-title">CORE_DEFENSE</div>
+            <div class="hud-data">
+                WAVE: <span id="wave">1</span> | 
+                BITS: <span id="money" style="color:yellow">100</span> | 
+                HP: <span id="hp" style="color:var(--neon-magenta)">100</span>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        
+        const waveEl = document.getElementById("wave");
+        const moneyEl = document.getElementById("money");
+        const hpEl = document.getElementById("hp");
+
+        // Config
+        const CENTER = { x: canvas.width/2, y: canvas.height/2 };
+        const CORE_RADIUS = 30;
+        const TURRET_COST = 50;
+
+        // State
+        let wave = 1;
+        let money = 100;
+        let hp = 100;
+        let score = 0; // Tracks kills/time
+        let isRunning = false;
+        let isGameOver = false;
+        let frameCount = 0;
+
+        // Entities
+        let enemies = [];
+        let turrets = [];
+        let projectiles = [];
+        let particles = [];
+
+        // Wave Logic
+        let enemySpawnTimer = 0;
+        let enemiesToSpawn = 10;
+        let enemiesSpawned = 0;
+        let waveDelayTimer = 0; // Time between waves
+
+        // Input
+        const mouse = { x: 0, y: 0 };
+
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('click', () => {
+            if(!isRunning) {
+                if(!isGameOver) {
+                    isRunning = true; 
+                    gameLoop();
+                }
+                return;
+            }
+            // Buy Turret
+            if(money >= TURRET_COST && canPlaceTurret(mouse.x, mouse.y)) {
+                money -= TURRET_COST;
+                moneyEl.innerText = money;
+                turrets.push({
+                    x: mouse.x,
+                    y: mouse.y,
+                    range: 150,
+                    cooldown: 0,
+                    angle: 0
+                });
+                createExplosion(mouse.x, mouse.y, '#00f3ff');
+            }
+        });
+
+        function canPlaceTurret(x, y) {
+            // Check distance from core
+            const distToCore = Math.hypot(x - CENTER.x, y - CENTER.y);
+            if(distToCore < CORE_RADIUS + 20) return false;
+
+            // Check overlap with other turrets
+            for(let t of turrets) {
+                const d = Math.hypot(x - t.x, y - t.y);
+                if(d < 30) return false;
+            }
+            return true;
+        }
+
+        // --- Game Logic ---
+
+        function update() {
+            if(isGameOver) return;
+            frameCount++;
+
+            // Wave Management
+            if(enemiesSpawned < enemiesToSpawn) {
+                if(enemySpawnTimer <= 0) {
+                    spawnEnemy();
+                    enemySpawnTimer = 60 - (wave * 2); // Spawns get faster
+                    if(enemySpawnTimer < 10) enemySpawnTimer = 10;
+                } else {
+                    enemySpawnTimer--;
+                }
+            } else if (enemies.length === 0) {
+                // Wave Complete
+                if(waveDelayTimer <= 0) waveDelayTimer = 180; // 3 sec break
+                waveDelayTimer--;
+                if(waveDelayTimer <= 0) {
+                    wave++;
+                    waveEl.innerText = wave;
+                    enemiesToSpawn = 10 + (wave * 5);
+                    enemiesSpawned = 0;
+                    money += 50; // Wave bonus
+                    moneyEl.innerText = money;
+                }
+            }
+
+            // Update Enemies
+            for(let i=enemies.length-1; i>=0; i--) {
+                let e = enemies[i];
+                // Move towards center
+                const angle = Math.atan2(CENTER.y - e.y, CENTER.x - e.x);
+                e.x += Math.cos(angle) * e.speed;
+                e.y += Math.sin(angle) * e.speed;
+
+                // Hit Core
+                const distToCore = Math.hypot(e.x - CENTER.x, e.y - CENTER.y);
+                if(distToCore < CORE_RADIUS) {
+                    hp -= 10;
+                    hpEl.innerText = hp;
+                    createExplosion(e.x, e.y, '#ff0000');
+                    enemies.splice(i, 1);
+                    if(hp <= 0) gameOver();
+                    continue;
+                }
+            }
+
+            // Update Turrets
+            turrets.forEach(t => {
+                if(t.cooldown > 0) t.cooldown--;
+                
+                // Find nearest enemy
+                let nearest = null;
+                let minDist = t.range;
+                
+                for(let e of enemies) {
+                    const d = Math.hypot(e.x - t.x, e.y - t.y);
+                    if(d < minDist) {
+                        minDist = d;
+                        nearest = e;
+                    }
+                }
+
+                if(nearest) {
+                    // Aim
+                    t.angle = Math.atan2(nearest.y - t.y, nearest.x - t.x);
+                    
+                    // Shoot
+                    if(t.cooldown <= 0) {
+                        projectiles.push({
+                            x: t.x,
+                            y: t.y,
+                            vx: Math.cos(t.angle) * 8,
+                            vy: Math.sin(t.angle) * 8,
+                            life: 60
+                        });
+                        t.cooldown = 20; // Fire rate
+                    }
+                }
+            });
+
+            // Update Projectiles
+            for(let i=projectiles.length-1; i>=0; i--) {
+                let p = projectiles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                
+                // Collision
+                let hit = false;
+                for(let j=enemies.length-1; j>=0; j--) {
+                    let e = enemies[j];
+                    const dist = Math.hypot(p.x - e.x, p.y - e.y);
+                    if(dist < e.radius + 5) {
+                        // Kill Enemy
+                        e.hp--;
+                        hit = true;
+                        if(e.hp <= 0) {
+                            enemies.splice(j, 1);
+                            money += 10;
+                            score += 10;
+                            moneyEl.innerText = money;
+                            createExplosion(e.x, e.y, '#ff0055');
+                        } else {
+                            createExplosion(e.x, e.y, '#fff');
+                        }
+                        break;
+                    }
+                }
+                
+                if(hit || p.life <= 0) projectiles.splice(i, 1);
+            }
+
+            // Update Particles
+            for(let i=particles.length-1; i>=0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function spawnEnemy() {
+            // Spawn from edge
+            let x, y;
+            if(Math.random() < 0.5) {
+                x = Math.random() < 0.5 ? -20 : canvas.width + 20;
+                y = Math.random() * canvas.height;
+            } else {
+                x = Math.random() * canvas.width;
+                y = Math.random() < 0.5 ? -20 : canvas.height + 20;
+            }
+
+            enemies.push({
+                x: x, y: y,
+                speed: Math.random() * 0.5 + 0.5 + (wave * 0.1),
+                hp: 1 + Math.floor(wave / 3),
+                radius: 10
+            });
+            enemiesSpawned++;
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    color: color,
+                    life: 1.0
+                });
+            }
+        }
+
+        function draw() {
+            // Trail cleanup
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Core
+            ctx.save();
+            ctx.translate(CENTER.x, CENTER.y);
+            ctx.rotate(frameCount * 0.01);
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i=0; i<6; i++) {
+                const angle = i * Math.PI / 3;
+                ctx.lineTo(Math.cos(angle)*CORE_RADIUS, Math.sin(angle)*CORE_RADIUS);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fillStyle = `rgba(0, 243, 255, ${Math.abs(Math.sin(frameCount*0.05)) * 0.5})`;
+            ctx.fill();
+            ctx.restore();
+
+            if(!isRunning) {
+                ctx.fillStyle = "#fff";
+                ctx.font = "20px 'Courier New'";
+                ctx.textAlign = "center";
+                ctx.fillText("CLICK TO INITIALIZE DEFENSE SYSTEMS", canvas.width/2, canvas.height/2 + 60);
+                return;
+            }
+
+            // Draw Turrets
+            turrets.forEach(t => {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+                
+                // Base
+                ctx.fillStyle = '#222';
+                ctx.strokeStyle = '#0aff00';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Barrel
+                ctx.rotate(t.angle);
+                ctx.fillStyle = '#0aff00';
+                ctx.fillRect(0, -2, 15, 4);
+
+                ctx.restore();
+            });
+
+            // Draw Enemies
+            enemies.forEach(e => {
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = '#ff0055';
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw Projectiles
+            ctx.fillStyle = '#ffff00';
+            projectiles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 2, 2);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Draw Placement Ghost
+            if(money >= TURRET_COST && canPlaceTurret(mouse.x, mouse.y)) {
+                ctx.strokeStyle = 'rgba(10, 255, 0, 0.5)';
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, 10, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, 150, 0, Math.PI*2); // Range indicator
+                ctx.strokeStyle = 'rgba(10, 255, 0, 0.1)';
+                ctx.stroke();
+            }
+        }
+
+        function gameLoop() {
+            if(isGameOver) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            ctx.fillStyle = 'rgba(0,0,0,0.85)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ff0000';
+            ctx.font = 'bold 40px "Courier New"';
+            ctx.textAlign = 'center';
+            ctx.fillText("CORE BREACHED", canvas.width/2, canvas.height/2);
+            
+            saveGameResult("Core Defense", score, () => {
+                 document.location.reload();
+            });
+        }
+
+        draw();
+
+        function saveGameResult(gameName, score, callback) {
+            if (score <= 0) {
+                if(callback) callback();
+                return;
+            }
+            if(window.showCyberPrompt) {
+                showCyberPrompt("DEFENSE LOG SAVED. COMMANDER ID:", (pilot) => {
+                    const newScore = {
+                        pilot: pilot.toUpperCase(),
+                        game: gameName,
+                        score: score,
+                        date: new Date().toISOString()
+                    };
+                    const scores = JSON.parse(localStorage.getItem('neo_arcade_hall_of_fame') || '[]');
+                    scores.push(newScore);
+                    localStorage.setItem('neo_arcade_hall_of_fame', JSON.stringify(scores));
+                    if(callback) callback();
+                });
+            } else {
+                if(callback) callback();
+            }
+        }
+    </script>
+    <script src="../../assets/js/main.js"></script>
+</body>
+</html>
