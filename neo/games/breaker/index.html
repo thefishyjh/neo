@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Breaker</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <a href="../../index.html" class="cyber-btn">&lt; SYSTEM_EXIT</a>
+
+    <div class="game-wrapper">
+        <div class="cyber-hud">
+            <div class="hud-title">FIREWALL_BREAKER</div>
+            <div class="hud-data">PACKETS: <span id="score">0</span></div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+
+        // Game State
+        let ballRadius = 8;
+        let x = canvas.width / 2;
+        let y = canvas.height - 40;
+        let dx = 4;
+        let dy = -4; 
+        
+        let paddleHeight = 10;
+        let paddleWidth = 150;
+        let paddleX = (canvas.width - paddleWidth) / 2;
+        
+        let brickRowCount = 6;
+        let brickColumnCount = 8;
+        let brickPadding = 10;
+        let brickOffsetTop = 50;
+        let brickOffsetLeft = 35;
+        let brickWidth = (canvas.width - (brickOffsetLeft * 2) - (brickPadding * (brickColumnCount - 1))) / brickColumnCount;
+        let brickHeight = 25;
+        
+        let bricks = [];
+        for (let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (let r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { x: 0, y: 0, status: 1 };
+            }
+        }
+
+        // Trail Array
+        let trail = [];
+
+        let isRunning = false;
+        let score = 0;
+
+        document.addEventListener("mousemove", (e) => {
+            const relativeX = e.clientX - canvas.getBoundingClientRect().left;
+            if (relativeX > 0 && relativeX < canvas.width) {
+                paddleX = relativeX - paddleWidth / 2;
+            }
+        }, false);
+        
+        canvas.addEventListener("click", () => {
+            if (!isRunning) {
+                isRunning = true;
+                draw();
+            }
+        });
+
+        function drawBall() {
+            // Draw Trail
+            trail.push({x: x, y: y});
+            if(trail.length > 10) trail.shift();
+
+            trail.forEach((pos, index) => {
+                const alpha = index / 10;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, ballRadius * (index/10), 0, Math.PI*2);
+                ctx.fillStyle = `rgba(0, 243, 255, ${alpha})`;
+                ctx.fill();
+            });
+
+            // Draw Core Ball
+            ctx.beginPath();
+            ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#00f3ff";
+            ctx.fill();
+            ctx.closePath();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawPaddle() {
+            // Energy Bar Style
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00f3ff";
+            ctx.fillStyle = "#00f3ff";
+            ctx.fillRect(paddleX, canvas.height - paddleHeight - 10, paddleWidth, paddleHeight);
+            
+            // White core
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(paddleX + 10, canvas.height - paddleHeight - 8, paddleWidth - 20, 2);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawBricks() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r].status == 1) {
+                        let bx = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
+                        let by = (r * (brickHeight + brickPadding)) + brickOffsetTop;
+                        bricks[c][r].x = bx;
+                        bricks[c][r].y = by;
+                        
+                        const hue = (c * 40) + (r * 10);
+                        
+                        // Glass/Holo Block Style
+                        ctx.strokeStyle = `hsl(${hue}, 80%, 60%)`;
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(bx, by, brickWidth, brickHeight);
+                        
+                        ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.2)`;
+                        ctx.fillRect(bx, by, brickWidth, brickHeight);
+                    }
+                }
+            }
+        }
+
+        function collisionDetection() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    let b = bricks[c][r];
+                    if (b.status == 1) {
+                        if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+                            dy = -dy;
+                            b.status = 0;
+                            score += 100; // Increase score per brick
+                            scoreEl.innerText = score;
+                            if(score >= brickRowCount * brickColumnCount * 100) {
+                                isRunning = false; // Stop game loop
+                                saveGameResult("Cyber Breaker", score, () => {
+                                    document.location.reload();
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            if(!isRunning) return;
+
+            // Trail Effect Cleanup (fades old frames)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawBricks();
+            drawBall();
+            drawPaddle();
+            collisionDetection();
+
+            if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) dx = -dx;
+            if (y + dy < ballRadius) dy = -dy;
+            else if (y + dy > canvas.height - ballRadius - 20) {
+                if (x > paddleX && x < paddleX + paddleWidth) {
+                    let hitPoint = x - (paddleX + paddleWidth / 2);
+                    dx = hitPoint * 0.15;
+                    dy = -Math.abs(dy) * 1.05;
+                } else if (y + dy > canvas.height) {
+                    isRunning = false; // Stop game loop
+                    saveGameResult("Cyber Breaker", score, () => {
+                        document.location.reload();
+                    });
+                    return;
+                }
+            }
+
+            x += dx;
+            y += dy;
+            requestAnimationFrame(draw);
+        }
+
+        function saveGameResult(gameName, score, callback) {
+            if (score <= 0) {
+                if(callback) callback();
+                return;
+            }
+            
+            showCyberPrompt("MISSION STATUS: ENDED. ID REQUIRED:", (pilot) => {
+                const newScore = {
+                    pilot: pilot.toUpperCase(),
+                    game: gameName,
+                    score: score,
+                    date: new Date().toISOString()
+                };
+                const scores = JSON.parse(localStorage.getItem('neo_arcade_hall_of_fame') || '[]');
+                scores.push(newScore);
+                localStorage.setItem('neo_arcade_hall_of_fame', JSON.stringify(scores));
+                
+                if(callback) callback();
+            });
+        }
+        
+        // Initial Screen
+        ctx.fillStyle = "#00f3ff";
+        ctx.font = "20px 'Courier New'";
+        ctx.textAlign = "center";
+        ctx.fillText("CLICK TO INITIALIZE UPLINK", canvas.width/2, canvas.height/2);
+
+    </script>
+    <script src="../../assets/js/main.js"></script>
+</body>
+</html>

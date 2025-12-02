@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcade Verse | Personal Game Blog</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+    <header>
+        <div class="logo">NEO_ARCADE</div>
+    </header>
+
+    <section class="hero">
+        <h1>LEVEL UP</h1>
+        <p><span id="typing-text" class="typing-cursor"></span><br>A collection of neon-infused web experiences.</p>
+    </section>
+
+    <section class="games-section">
+        <h2 class="section-title">Select Cartridge</h2>
+        
+        <div class="grid">
+            <!-- Game 1 -->
+            <a href="games/snake/index.html" class="game-card">
+                <div class="card-image snake-thumb"></div>
+                <div class="card-content">
+                    <h3>Neon Snake</h3>
+                    <p>Classic snake gameplay with a cyberpunk twist. Eat bits, grow longer, don't crash.</p>
+                    <span class="play-btn">Initialize</span>
+                </div>
+            </a>
+
+            <!-- Game 2 -->
+            <a href="games/breaker/index.html" class="game-card">
+                <div class="card-image breaker-thumb"></div>
+                <div class="card-content">
+                    <h3>Cyber Breaker</h3>
+                    <p>Smash through the firewall layers. High-speed physics action.</p>
+                    <span class="play-btn">Initialize</span>
+                </div>
+            </a>
+
+            <!-- Game 3 -->
+            <a href="games/clicker/index.html" class="game-card">
+                <div class="card-image clicker-thumb"></div>
+                <div class="card-content">
+                    <h3>Reflex Core</h3>
+                    <p>Test your reaction speeds. Hit the targets before they overload.</p>
+                    <span class="play-btn">Initialize</span>
+                </div>
+            </a>
+        </div>
+    </section>
+
+    <!-- NEW: Hall of Fame Section -->
+    <section class="leaderboard-section">
+        <div class="content-container">
+            <h2 class="section-title">Hall of Fame</h2>
+            <div class="leaderboard-container">
+                <table class="cyber-table">
+                    <thead>
+                        <tr>
+                            <th>RANK</th>
+                            <th>PILOT</th>
+                            <th>GAME</th>
+                            <th>SCORE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- NEW: Experimental Uplink Section -->
+    <section class="experiment-section" style="padding: 50px 0;">
+        <div class="content-container">
+            <h2 class="section-title">Experimental Uplink</h2>
+            <a href="games/particles/index.html" class="game-card experiment-card" style="display: flex; height: 250px; align-items: center; justify-content: center; background: radial-gradient(circle, #101010 0%, #000 100%); border: 2px solid var(--neon-magenta); text-align: center;">
+                <div class="card-content" style="max-width: 600px;">
+                    <h3 style="font-size: 2rem; margin-bottom: 15px; color: var(--neon-magenta);">NEURAL PARTICLE CORE</h3>
+                    <p style="margin-bottom: 20px;">Direct Neural Interface Required. Manipulate 3D matter using hand gestures.</p>
+                    <span class="play-btn" style="border-color: var(--neon-cyan); color: var(--neon-cyan); padding: 15px 30px; font-size: 1rem;">INITIATE HANDSHAKE &gt;</span>
+                </div>
+            </a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="footer-content">
+            <p>SYSTEM STATUS: <span style="color: var(--neon-lime)">ONLINE</span> // CREATED BY GEMINI AGENT</p>
+            <div class="social-links">
+                <a href="#" class="social-link">GITHUB</a>
+                <a href="#" class="social-link">TWITTER</a>
+                <a href="#" class="social-link">DISCORD</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/main.js"></script>
+</body>
+</html>

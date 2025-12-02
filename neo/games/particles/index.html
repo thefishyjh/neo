@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Particle Core v5.0 - TEXT MATRIX</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; background: #020205; }
+        
+        #ui-layer {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+        }
+
+        .hud-panel {
+            background: rgba(2, 2, 5, 0.7);
+            border-left: 3px solid var(--neon-cyan);
+            padding: 15px;
+            margin-bottom: 10px;
+            backdrop-filter: blur(10px);
+            width: 300px;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        .hud-title {
+            color: var(--neon-cyan);
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .val { color: #fff; font-weight: bold; }
+        .val.active { color: var(--neon-magenta); text-shadow: 0 0 8px var(--neon-magenta); }
+        
+        #video-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 135px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 5;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+        #video-container:hover { opacity: 1; border-color: var(--neon-cyan); }
+
+        #output-canvas {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+
+        .hand-indicator {
+            position: absolute;
+            bottom: 5px;
+            font-size: 10px;
+            font-family: sans-serif;
+            color: #fff;
+            background: rgba(0,0,0,0.6);
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        #lh-indicator { left: 5px; color: var(--neon-magenta); border-left: 2px solid var(--neon-magenta); }
+        #rh-indicator { right: 5px; color: var(--neon-cyan); border-right: 2px solid var(--neon-cyan); }
+
+        .exit-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud-panel">
+            <div class="hud-title">TEXT MATRIX CORE</div>
+            <div class="hud-row"><span>SYSTEM</span> <span id="sys-status" style="color:yellow">BOOTING</span></div>
+            <div class="hud-row"><span>PARTICLES</span> <span class="val">20,000</span></div>
+            <div class="hud-row"><span>FOCUS</span> <span id="focus-val" class="val">0%</span></div>
+        </div>
+
+        <div class="hud-panel">
+            <div class="hud-title">CONTROLS</div>
+            <div class="hud-row">
+                <span>LEFT (TAP)</span> 
+                <span id="lh-val" class="val">WAITING</span>
+            </div>
+            <div class="hud-row">
+                <span>RIGHT (SPREAD)</span> 
+                <span id="rh-val" class="val">WAITING</span>
+            </div>
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <div class="hud-row" style="align-items: center;">
+                    <span>LAYER</span>
+                    <span id="layer-name" class="val active" style="font-size: 1.1rem; color: var(--neon-cyan)">LAYER 1: HELLO</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <a href="../../index.html" class="cyber-btn exit-btn">DISCONNECT</a>
+
+    <div id="video-container">
+        <canvas id="output-canvas" width="640" height="360"></canvas>
+        <div id="lh-indicator" class="hand-indicator">LEFT: NEXT LAYER</div>
+        <div id="rh-indicator" class="hand-indicator">RIGHT: REVEAL TEXT</div>
+    </div>
+
+    <video id="raw-video" playsinline style="display:none"></video>
+
+    <script>
+        // ==========================================
+        // 1. VISUAL SETUP
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x020205, 0.002);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 80;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        function getSoftSmokeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.2, 'rgba(255,255,255,0.5)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 64, 64);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        // ==========================================
+        // 2. TEXT GENERATION ENGINE
+        // ==========================================
+        const PARTICLE_COUNT = 20000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(PARTICLE_COUNT * 3);
+        const colors = new Float32Array(PARTICLE_COUNT * 3);
+
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
+        // Function to create particle data from text
+        function generateTextPositions(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw Text
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 150px Arial'; 
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const validPixels = [];
+
+            // Scan pixels
+            for (let y = 0; y < canvas.height; y += 4) { // Skip steps for speed
+                for (let x = 0; x < canvas.width; x += 4) {
+                    const i = (y * canvas.width + x) * 4;
+                    if (imgData[i] > 128) { // If pixel is bright
+                        validPixels.push({
+                            x: (x - canvas.width / 2) * 0.15, // Scale to world space
+                            y: -(y - canvas.height / 2) * 0.15
+                        });
+                    }
+                }
+            }
+
+            const points = [];
+            // Map particles to valid pixels
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                if (validPixels.length > 0) {
+                    const pixel = validPixels[i % validPixels.length];
+                    // Add Z-depth volume to text
+                    points.push(
+                        pixel.x + rand(-0.5, 0.5), 
+                        pixel.y + rand(-0.5, 0.5), 
+                        rand(-2, 2)
+                    ); 
+                } else {
+                    points.push(0,0,0);
+                }
+            }
+            return points;
+        }
+
+        // --- PRE-CALCULATE LAYERS ---
+        const layers = [
+            { name: "HELLO", data: [] },
+            { name: "KEEP CALM", data: [] },
+            { name: "CARRY ON", data: [] }
+        ];
+        
+        // Base Chaos Shape (The "Zoom Out" state)
+        const baseChaos = [];
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            const r = 40 + rand(-5, 5);
+            const theta = rand(0, Math.PI * 2);
+            const phi = Math.acos(2 * Math.random() - 1);
+            // Hollow sphere cloud
+            baseChaos.push(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+        }
+
+        // Generate Text Data
+        layers[0].data = generateTextPositions("HELLO");
+        layers[1].data = generateTextPositions("KEEP CALM");
+        layers[2].data = generateTextPositions("CARRY ON");
+
+        // Init buffer with Chaos
+        positions.set(baseChaos);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        // Init Colors
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            const c = new THREE.Color().setHSL(0.6, 0.8, 0.5);
+            colors[i*3] = c.r;
+            colors[i*3+1] = c.g;
+            colors[i*3+2] = c.b;
+        }
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.8,
+            map: getSoftSmokeTexture(),
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const particleSystem = new THREE.Points(geometry, material);
+        scene.add(particleSystem);
+
+        // ==========================================
+        // 3. LOGIC & ANIMATION
+        // ==========================================
+        let currentLayerIdx = 0;
+        
+        // "Focus" represents the Right Hand zoom state.
+        // 0.0 = Chaos (Zoomed Out/Pinched)
+        // 1.0 = Text (Zoomed In/Spread)
+        let targetFocus = 0.0;
+        let currentFocus = 0.0;
+        
+        const palettes = [
+            { c1: '#00f3ff', c2: '#0044ff' }, // Hello (Cyan)
+            { c1: '#ff0055', c2: '#ffaaaa' }, // Calm (Pink/Red)
+            { c1: '#00ffaa', c2: '#ffffff' }, // Carry On (Green/White)
+        ];
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Smooth Focus transition
+            currentFocus += (targetFocus - currentFocus) * 0.1;
+
+            const currentPos = particleSystem.geometry.attributes.position.array;
+            const textTarget = layers[currentLayerIdx].data;
+            const chaosTarget = baseChaos;
+
+            // INTERPOLATION LOGIC
+            // Position = lerp(Chaos, Text, currentFocus)
+            for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
+                const start = chaosTarget[i];
+                const end = textTarget[i];
+                
+                // Calculate ideal position based on focus
+                const ideal = start + (end - start) * currentFocus;
+                
+                // Move current particle towards ideal position (Smoothing)
+                currentPos[i] += (ideal - currentPos[i]) * 5.0 * delta;
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+
+            // Rotation
+            // Spin fast when chaos, lock steady when text
+            const rotSpeed = 0.002 * (1 - currentFocus); 
+            particleSystem.rotation.y += rotSpeed;
+            
+            // Auto-align rotation to 0 when becoming text
+            if (currentFocus > 0.5) {
+                particleSystem.rotation.y += (0 - particleSystem.rotation.y) * 0.1;
+                particleSystem.rotation.x += (0 - particleSystem.rotation.x) * 0.1;
+            } else {
+                particleSystem.rotation.x = Math.sin(time * 0.2) * 0.1;
+            }
+
+            // Update UI
+            document.getElementById('focus-val').textContent = Math.round(currentFocus * 100) + "%";
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+
+        // ==========================================
+        // 4. GESTURE CONTROL
+        // ==========================================
+        const sysStatus = document.getElementById('sys-status');
+        const lhStatus = document.getElementById('lh-val');
+        const rhStatus = document.getElementById('rh-val');
+        const layerDisplay = document.getElementById('layer-name');
+        
+        const rawVideo = document.getElementById('raw-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        let leftHandPinchState = false;
+
+        function onResults(results) {
+            sysStatus.innerText = "ONLINE";
+            sysStatus.style.color = "#0aff00";
+
+            // Debug Draw
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 1});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#00FFFF', lineWidth: 1, radius: 2});
+                }
+            }
+            canvasCtx.restore();
+
+            let rhDetected = false;
+            let lhDetected = false;
+
+            if (results.multiHandLandmarks) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const label = results.multiHandedness[i].label;
+
+                    // --- RIGHT HAND (REVEAL TEXT) ---
+                    // "Left" label in mirror mode = USER RIGHT HAND
+                    if (label === 'Left') {
+                        rhDetected = true;
+                        
+                        // Distance: Thumb(4) to Index(8)
+                        const d = Math.sqrt(
+                            Math.pow(landmarks[4].x - landmarks[8].x, 2) + 
+                            Math.pow(landmarks[4].y - landmarks[8].y, 2)
+                        );
+                        
+                        // Map:
+                        // < 0.04 (Pinch) -> Focus 0.0 (Chaos)
+                        // > 0.15 (Spread) -> Focus 1.0 (Text)
+                        
+                        const clampedD = Math.max(0.04, Math.min(0.15, d));
+                        const rawFocus = (clampedD - 0.04) / (0.11); // 0 to 1
+                        
+                        targetFocus = rawFocus;
+                        
+                        if (targetFocus > 0.8) {
+                            rhStatus.innerText = "REVEALING";
+                            rhStatus.style.color = "var(--neon-magenta)";
+                        } else if (targetFocus < 0.2) {
+                            rhStatus.innerText = "DISPERSED";
+                            rhStatus.className = "val";
+                        } else {
+                            rhStatus.innerText = "MORPHING...";
+                            rhStatus.style.color = "#ffff00";
+                        }
+                    }
+
+                    // --- LEFT HAND (SWITCH LAYER) ---
+                    // "Right" label in mirror mode = USER LEFT HAND
+                    if (label === 'Right') {
+                        lhDetected = true;
+                        
+                        const d = Math.sqrt(
+                            Math.pow(landmarks[4].x - landmarks[8].x, 2) + 
+                            Math.pow(landmarks[4].y - landmarks[8].y, 2)
+                        );
+
+                        // Tap Logic
+                        if (!leftHandPinchState && d < 0.04) {
+                            leftHandPinchState = true;
+                            nextLayer();
+                            lhStatus.innerText = "NEXT LAYER >>";
+                            lhStatus.style.color = "var(--neon-magenta)";
+                        } 
+                        else if (leftHandPinchState && d > 0.06) {
+                            leftHandPinchState = false;
+                            lhStatus.innerText = "READY";
+                            lhStatus.style.color = "#0aff00";
+                        }
+                        else if (leftHandPinchState) {
+                             lhStatus.innerText = "RELEASE";
+                             lhStatus.style.color = "yellow";
+                        } else {
+                            lhStatus.innerText = "READY";
+                            lhStatus.className = "val active";
+                        }
+                    }
+                }
+            }
+
+            if (!rhDetected) {
+                // If hand lost, slowly return to chaos? Or stay? Let's stay for stability.
+                rhStatus.innerText = "NO HAND";
+                rhStatus.className = "val";
+            }
+            if (!lhDetected) {
+                lhStatus.innerText = "NO HAND";
+                lhStatus.className = "val";
+            }
+        }
+
+        function nextLayer() {
+            currentLayerIdx = (currentLayerIdx + 1) % layers.length;
+            const info = layers[currentLayerIdx];
+            layerDisplay.innerText = `LAYER ${currentLayerIdx+1}: ${info.name}`;
+            
+            // Pulse color change
+            const p = palettes[currentLayerIdx % palettes.length];
+            const c1 = new THREE.Color(p.c1);
+            const c2 = new THREE.Color(p.c2);
+            
+            const arr = particleSystem.geometry.attributes.color.array;
+            for(let i=0; i<PARTICLE_COUNT; i++) {
+                const mix = Math.random();
+                const c = c1.clone().lerp(c2, mix);
+                arr[i*3] = c.r;
+                arr[i*3+1] = c.g;
+                arr[i*3+2] = c.b;
+            }
+            particleSystem.geometry.attributes.color.needsUpdate = true;
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(rawVideo, {
+            onFrame: async () => {
+                try {
+                    await hands.send({image: rawVideo});
+                } catch(e) {}
+            },
+            width: 640,
+            height: 360
+        });
+        cameraUtils.start();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
